@@ -8,7 +8,7 @@ Based on GSFC-STD-1000H Technical Resource Margin Guidelines
 
 Satellite Reference:
   - Bus dimensions: 35 x 25 x 110 cm
-  - Dry mass target: ~100 kg
+  - Total (wet) mass constraint: 100 kg (including propellant)
   - Propulsion: Hall Effect Thruster (BHT-100 class)
   - Orbit: ~300 km circular LEO (VLEO)
 """
@@ -29,7 +29,7 @@ V_orbit = np.sqrt(mu / r_orbit)      # Orbital velocity [km/s]
 T_orbit = 2 * np.pi * r_orbit / V_orbit  # Orbital period [s]
 
 # Satellite parameters
-m_dry_nominal = 100.0   # Nominal dry mass [kg]
+m_wet_total = 100.0     # Total wet mass constraint [kg] (including propellant)
 Cd = 2.2                # Drag coefficient (typical for LEO)
 
 # Bus dimensions: 35 x 25 x 110 cm
@@ -39,7 +39,8 @@ A_max = 1.10 * 0.35     # Max cross-section [m^2] = 0.385 m^2
 A_nom = 0.35 * 0.25     # Nominal cross-section [m^2] = 0.0875 m^2
 
 # HET parameters (BHT-100 class)
-Isp_nominal = 1390.0     # Nominal specific impulse [s]
+# Isp_nominal = 1390.0     # Nominal specific impulse [s]
+Isp_nominal = 1000.0     # Nominal specific impulse [s]
 thrust_nominal = 7.0e-3  # Nominal thrust [N] = 7 mN
 power_nominal = 100.0    # Nominal input power [W]
 
@@ -58,7 +59,7 @@ print(f"  Orbital altitude        : {h_orbit:.0f} km")
 print(f"  Orbital radius          : {r_orbit:.1f} km")
 print(f"  Orbital velocity        : {V_orbit:.3f} km/s ({V_orbit*1000:.1f} m/s)")
 print(f"  Orbital period          : {T_orbit:.1f} s ({T_orbit/60:.1f} min)")
-print(f"  Nominal dry mass        : {m_dry_nominal:.1f} kg")
+print(f"  Total wet mass          : {m_wet_total:.1f} kg (constraint, incl. propellant)")
 print(f"  Nominal cross-section   : {A_nom:.4f} m² (flight attitude)")
 print(f"  Max cross-section       : {A_max:.4f} m² (worst-case)")
 print(f"  HET Isp (nominal)       : {Isp_nominal:.0f} s")
@@ -95,11 +96,11 @@ def drag_dv_per_year(rho, Cd, A, m, V_orb_ms):
 V_orb_ms = V_orbit * 1000  # m/s
 
 # Nominal case
-a_drag_nom, dv_drag_nom = drag_dv_per_year(rho_nom, Cd, A_nom, m_dry_nominal, V_orb_ms)
+a_drag_nom, dv_drag_nom = drag_dv_per_year(rho_nom, Cd, A_nom, m_wet_total, V_orb_ms)
 # Solar max case
-a_drag_high, dv_drag_high = drag_dv_per_year(rho_high, Cd, A_nom, m_dry_nominal, V_orb_ms)
+a_drag_high, dv_drag_high = drag_dv_per_year(rho_high, Cd, A_nom, m_wet_total, V_orb_ms)
 # Worst case: solar max + max cross-section
-a_drag_worst, dv_drag_worst = drag_dv_per_year(rho_high, Cd, A_max, m_dry_nominal, V_orb_ms)
+a_drag_worst, dv_drag_worst = drag_dv_per_year(rho_high, Cd, A_max, m_wet_total, V_orb_ms)
 
 print(f"\n  --- Drag Acceleration ---")
 print(f"  Nominal (moderate solar)         : {a_drag_nom:.4e} m/s²")
@@ -127,14 +128,14 @@ print(f"\n{'='*72}")
 print("[3] OTHER ΔV COMPONENTS")
 print("-" * 50)
 
-# Orbit raising: launcher dispersion correction (±10 km altitude correction)
-dh_correction = 10.0  # km
-dv_orbit_correction = mu / (r_orbit**2) * dh_correction / V_orbit  # Hohmann approx
-# More accurate: two burns
-a_transfer = r_orbit + dh_correction / 2
-dv_orbit_raising = abs(np.sqrt(2*mu/r_orbit - mu/a_transfer) - np.sqrt(mu/r_orbit)) * 1000  # m/s
-dv_orbit_raising *= 2  # Two burns for Hohmann
-print(f"  Orbit correction (±{dh_correction:.0f} km)       : {dv_orbit_raising:.2f} m/s")
+# Orbit correction: launcher dispersion expected mean correction
+# Launch vehicle altitude dispersion ~ 1σ = 5 km (normal distribution)
+# Expected absolute deviation = σ × √(2/π) ≈ 4 km, rounded to 5 km conservatively
+dh_expected = 5.0  # km, expected (mean) altitude correction needed
+a_transfer = r_orbit + dh_expected / 2
+dv_orbit_correction = abs(np.sqrt(2*mu/r_orbit - mu/a_transfer) - np.sqrt(mu/r_orbit)) * 1000  # m/s
+dv_orbit_correction *= 2  # Two burns for Hohmann
+print(f"  Orbit correction (expected {dh_expected:.0f} km)  : {dv_orbit_correction:.2f} m/s")
 
 # Collision avoidance maneuvers
 # Typical: 2-4 maneuvers per year at VLEO, ~0.5-2 m/s each
@@ -144,12 +145,7 @@ dv_cam_mission = n_cam_per_year * dv_per_cam * mission_life_years
 print(f"  Collision avoidance ({n_cam_per_year}/yr × {dv_per_cam:.1f} m/s) : {dv_cam_mission:.2f} m/s")
 
 # Attitude control assist (if propulsion-assisted)
-'''
-ADCS 설계가 구체화되면, 300km에서의 항력 토크(CoG-CoP 옵셋 × 항력)를 계산하고,
-여기에 중력구배 토크, 태양복사압 토크, 잔류 자기 토크를 합산한 뒤,
-리액션 휠 포화 주기를 구하고, 1회 덤핑에 필요한 ΔV를 추력기 배치로부터 산출하여 정확한 연간 소요량을 도출 가능
-'''
-dv_attitude = 2.0 * mission_life_years  # m/s (small allocation) 
+dv_attitude = 2.0 * mission_life_years  # m/s (small allocation)
 print(f"  Attitude control assist          : {dv_attitude:.2f} m/s")
 
 # De-orbit ΔV (at 300 km, natural decay is fast, but controlled de-orbit)
@@ -172,7 +168,7 @@ print("-" * 50)
 
 budget_items = {
     "Drag compensation (3yr, nominal)": dv_drag_mission_nom,
-    "Orbit correction (±10 km)": dv_orbit_raising,
+    "Orbit correction (expected mean)": dv_orbit_correction,
     "Collision avoidance": dv_cam_mission,
     "Attitude control assist": dv_attitude,
     "Controlled de-orbit": dv_deorbit,
@@ -187,6 +183,21 @@ for item, dv in budget_items.items():
 print(f"  {'─'*42}   {'─'*10}")
 print(f"  {'TOTAL NOMINAL ΔV':<42s} : {dv_total_nominal:8.2f} m/s")
 
+# --- Preliminary mass breakdown (needed for 3σ analysis) ---
+def mass_breakdown_from_wet(dv_ms, m_wet, isp, g0=9.80665):
+    """Given wet mass and ΔV, compute dry mass and propellant mass."""
+    mass_ratio = np.exp(dv_ms / (g0 * isp))
+    m_dry = m_wet / mass_ratio
+    m_prop = m_wet - m_dry
+    return m_dry, m_prop, mass_ratio
+
+m_dry_nominal, m_prop_nominal_prelim, _ = mass_breakdown_from_wet(
+    dv_total_nominal, m_wet_total, Isp_nominal)
+
+print(f"\n  Preliminary mass breakdown (m_wet = {m_wet_total:.0f} kg):")
+print(f"  Propellant (nominal ΔV)  : {m_prop_nominal_prelim:.3f} kg")
+print(f"  Dry mass available       : {m_dry_nominal:.3f} kg")
+
 # =============================================================================
 # 5. 3-SIGMA MARGIN ANALYSIS (GSFC-STD-1000H)
 # =============================================================================
@@ -196,28 +207,37 @@ print("-" * 50)
 print("  Five uncertainty contributors per Table 1.06-1:")
 
 # Factor 1: Worst-case spacecraft mass properties
-# Assume 10% mass growth (1σ), so 3σ = 30%
-sigma_mass_1s = 0.10  # 10% 1-sigma mass uncertainty
-m_dry_3sigma = m_dry_nominal * (1 + 3 * sigma_mass_1s)
-# Additional ΔV needed due to mass increase (drag increases for same area)
-# ΔV_drag ∝ A/(m), so if m increases, drag ΔV actually decreases slightly
-# But Tsiolkovsky: heavier satellite needs more propellant for same ΔV
-# We account for this in propellant calc, not ΔV
-# For drag: heavier sat → less deceleration but same orbit maintenance needed
-# Net effect: compute ΔV uncertainty from mass on Tsiolkovsky
-dv_sigma1 = dv_total_nominal * sigma_mass_1s * 0.5  # Partial sensitivity
+# With m_wet = 100 kg constraint, mass growth has a different interpretation:
+#   - Propellant mass from Tsiolkovsky: m_prop = m_wet × (1 - 1/exp(ΔV/(g₀·Isp)))
+#   - Propellant depends on m_wet and ΔV, so if actual m_wet exceeds 100 kg
+#     due to dry mass growth, more propellant is needed for the same ΔV.
+#   - Additionally, dry mass growth reduces the mass available for propellant
+#     within the 100 kg envelope.
+# We model this as: if actual wet mass is 1σ=5% higher than planned (105 kg),
+# the additional propellant needed for the same ΔV is proportional.
+sigma_mwet_1s = 0.05  # 5% 1-sigma wet mass uncertainty (mass growth)
+m_wet_3sigma = m_wet_total * (1 + 3 * sigma_mwet_1s)
+# ΔV impact: more mass → same drag ΔV (nearly), but Tsiolkovsky demands
+# proportionally more propellant. Model as equivalent ΔV uncertainty.
+dv_sigma1 = dv_total_nominal * sigma_mwet_1s
 print(f"\n  [1] Spacecraft mass uncertainty")
-print(f"      1σ mass growth           : {sigma_mass_1s*100:.0f}%")
-print(f"      3σ dry mass              : {m_dry_3sigma:.1f} kg")
+print(f"      1σ wet mass growth       : {sigma_mwet_1s*100:.0f}% ({m_wet_total*sigma_mwet_1s:.1f} kg)")
+print(f"      3σ wet mass              : {m_wet_3sigma:.1f} kg")
+print(f"      (Nominal dry mass        : {m_dry_nominal:.1f} kg within 100 kg wet)")
 print(f"      1σ ΔV impact             : {dv_sigma1:.2f} m/s")
 
 # Factor 2: Launch vehicle performance (3σ low)
-# Altitude dispersion ±15 km (1σ ~5 km)
-sigma_alt_1s = 5.0  # km, 1σ altitude dispersion
-dv_per_km = dv_orbit_raising / (2 * dh_correction)  # ΔV per km correction
-dv_sigma2 = dv_per_km * sigma_alt_1s  # 1σ
+# Total altitude dispersion: 1σ = 5 km
+# Nominal budget already covers expected correction of 5 km
+# Factor 2: uncertainty that actual dispersion EXCEEDS the expected value
+# Additional 1σ uncertainty beyond expected: ~3 km
+sigma_alt_additional_1s = 3.0  # km, 1σ additional beyond expected 5 km
+dv_per_km = dv_orbit_correction / dh_expected  # ΔV per km correction
+dv_sigma2 = dv_per_km * sigma_alt_additional_1s  # 1σ
 print(f"\n  [2] Launch vehicle performance (3σ low)")
-print(f"      1σ altitude dispersion   : ±{sigma_alt_1s:.0f} km")
+print(f"      Nominal budget covers    : {dh_expected:.0f} km expected correction")
+print(f"      1σ additional dispersion : ±{sigma_alt_additional_1s:.0f} km beyond expected")
+print(f"      3σ total correction      : {dh_expected + 3*sigma_alt_additional_1s:.0f} km")
 print(f"      1σ ΔV impact             : {dv_sigma2:.2f} m/s")
 
 # Factor 3: Propulsion subsystem performance
@@ -288,48 +308,53 @@ print(f"  Design ΔV (nominal + 3σ)         : {dv_design:.2f} m/s")
 print(f"  Margin percentage                : {sigma_total_3s/dv_total_nominal*100:.1f}%")
 
 # Propellant mass calculation using Tsiolkovsky equation
-# m_prop = m_dry * (exp(ΔV / (g0 * Isp)) - 1)
+# With wet mass constraint: m_wet = m_dry + m_prop = 100 kg (fixed)
+# m_dry = m_wet / exp(ΔV / (g0 * Isp))
+# m_prop = m_wet - m_dry
+# (function mass_breakdown_from_wet defined earlier in Section 4)
 
-def propellant_mass(dv_ms, m_dry, isp, g0=9.80665):
-    """Tsiolkovsky rocket equation: propellant mass for given ΔV"""
-    mass_ratio = np.exp(dv_ms / (g0 * isp))
-    m_prop = m_dry * (mass_ratio - 1)
-    return m_prop, mass_ratio
+# Nominal case (nominal ΔV, nominal Isp) — recompute with final values
+m_dry_nominal, m_prop_nominal, mr_nominal = mass_breakdown_from_wet(
+    dv_total_nominal, m_wet_total, Isp_nominal)
 
-# Nominal propellant (nominal ΔV, nominal Isp, nominal mass)
-m_prop_nominal, mr_nominal = propellant_mass(dv_total_nominal, m_dry_nominal, Isp_nominal)
+# Design case (design ΔV with 3σ margin, nominal Isp)
+m_dry_design, m_prop_design, mr_design = mass_breakdown_from_wet(
+    dv_design, m_wet_total, Isp_nominal)
 
-# Design propellant (design ΔV, nominal Isp, nominal mass)
-m_prop_design, mr_design = propellant_mass(dv_design, m_dry_nominal, Isp_nominal)
-
-# Worst case propellant (design ΔV, degraded Isp, 3σ high mass)
-Isp_degraded = Isp_nominal * (1 - 3 * sigma_isp_1s)
-m_prop_worst, mr_worst = propellant_mass(dv_design, m_dry_3sigma, Isp_degraded)
-
-# Add residuals
+# Add residuals to design propellant
 m_prop_design_total = m_prop_design * (1 + residual_fraction)
+m_dry_design_actual = m_wet_total - m_prop_design_total
+
+# Worst case (design ΔV, degraded Isp)
+Isp_degraded = Isp_nominal * (1 - 3 * sigma_isp_1s)
+m_dry_worst, m_prop_worst, mr_worst = mass_breakdown_from_wet(
+    dv_design, m_wet_total, Isp_degraded)
 m_prop_worst_total = m_prop_worst * (1 + residual_fraction)
+m_dry_worst_actual = m_wet_total - m_prop_worst_total
 
 print(f"\n  --- Nominal Case ---")
-print(f"  Dry mass       : {m_dry_nominal:.1f} kg")
+print(f"  Wet mass       : {m_wet_total:.1f} kg (fixed constraint)")
 print(f"  Isp            : {Isp_nominal:.0f} s")
 print(f"  ΔV             : {dv_total_nominal:.2f} m/s")
 print(f"  Propellant     : {m_prop_nominal:.3f} kg")
+print(f"  Dry mass       : {m_dry_nominal:.3f} kg (available for bus + payload)")
 print(f"  Mass ratio     : {mr_nominal:.6f}")
 
 print(f"\n  --- Design Case (Nominal + 3σ ΔV) ---")
-print(f"  Dry mass       : {m_dry_nominal:.1f} kg")
+print(f"  Wet mass       : {m_wet_total:.1f} kg (fixed constraint)")
 print(f"  Isp            : {Isp_nominal:.0f} s")
 print(f"  ΔV             : {dv_design:.2f} m/s")
 print(f"  Propellant     : {m_prop_design:.3f} kg")
 print(f"  + Residuals    : {m_prop_design_total:.3f} kg")
+print(f"  Dry mass       : {m_dry_design_actual:.3f} kg (available for bus + payload)")
 
-print(f"\n  --- Worst Case (3σ mass + degraded Isp + residuals) ---")
-print(f"  Dry mass (3σ)  : {m_dry_3sigma:.1f} kg")
+print(f"\n  --- Worst Case (degraded Isp + residuals) ---")
+print(f"  Wet mass       : {m_wet_total:.1f} kg (fixed constraint)")
 print(f"  Isp (degraded) : {Isp_degraded:.0f} s")
 print(f"  ΔV             : {dv_design:.2f} m/s")
 print(f"  Propellant     : {m_prop_worst:.3f} kg")
 print(f"  + Residuals    : {m_prop_worst_total:.3f} kg")
+print(f"  Dry mass       : {m_dry_worst_actual:.3f} kg (available for bus + payload)")
 
 # =============================================================================
 # 7. SOLAR ACTIVITY SENSITIVITY ANALYSIS
@@ -344,18 +369,19 @@ scenarios = [
     ("Solar Maximum", rho_high),
 ]
 
-print(f"  {'Scenario':<22s} {'ρ [kg/m³]':>12s} {'ΔV_drag/yr':>12s} {'ΔV_drag 3yr':>12s} {'m_prop':>10s}")
-print(f"  {'─'*22} {'─'*12} {'─'*12} {'─'*12} {'─'*10}")
+print(f"  {'Scenario':<22s} {'ρ [kg/m³]':>12s} {'ΔV_drag/yr':>12s} {'ΔV_drag 3yr':>12s} {'m_prop':>9s} {'m_dry_avail':>11s}")
+print(f"  {'─'*22} {'─'*12} {'─'*12} {'─'*12} {'─'*9} {'─'*11}")
 
 for name, rho in scenarios:
-    _, dv_yr = drag_dv_per_year(rho, Cd, A_nom, m_dry_nominal, V_orb_ms)
+    _, dv_yr = drag_dv_per_year(rho, Cd, A_nom, m_wet_total, V_orb_ms)
     dv_3yr = dv_yr * mission_life_years
     # Replace drag component in total budget
     dv_total_scenario = dv_3yr + (dv_total_nominal - dv_drag_mission_nom)
     dv_scenario_design = dv_total_scenario + sigma_total_3s
-    m_p, _ = propellant_mass(dv_scenario_design, m_dry_nominal, Isp_nominal)
+    _, m_p, _ = mass_breakdown_from_wet(dv_scenario_design, m_wet_total, Isp_nominal)
     m_p_total = m_p * (1 + residual_fraction)
-    print(f"  {name:<22s} {rho:>12.2e} {dv_yr:>10.2f}   {dv_3yr:>10.2f}   {m_p_total:>8.3f} kg")
+    m_d_avail = m_wet_total - m_p_total
+    print(f"  {name:<22s} {rho:>12.2e} {dv_yr:>10.2f}   {dv_3yr:>10.2f}   {m_p_total:>7.3f} kg  {m_d_avail:>7.3f} kg")
 
 # =============================================================================
 # 8. THRUSTER OPERATION SUMMARY
@@ -393,20 +419,25 @@ print("-" * 50)
 
 # Propellant: 3σ margin required from Phase B through Phase D
 # Mass margins at each phase for reference
-print(f"\n  Propellant budget at current design point:")
-print(f"  ┌──────────────────────────────────────────────────────────┐")
-print(f"  │ Nominal propellant required      : {m_prop_nominal:8.3f} kg           │")
-print(f"  │ Design propellant (w/ 3σ + res)  : {m_prop_design_total:8.3f} kg           │")
-print(f"  │ 3σ margin in propellant mass      : {m_prop_design_total - m_prop_nominal:8.3f} kg           │")
-print(f"  │ 3σ margin percentage              : {(m_prop_design_total/m_prop_nominal - 1)*100:8.1f}%            │")
-print(f"  └──────────────────────────────────────────────────────────┘")
+print(f"\n  Mass budget breakdown (m_wet = {m_wet_total:.0f} kg constraint):")
+print(f"  ┌──────────────────────────────────────────────────────────────┐")
+print(f"  │ Nominal propellant required      : {m_prop_nominal:8.3f} kg               │")
+print(f"  │ Design propellant (w/ 3σ + res)  : {m_prop_design_total:8.3f} kg               │")
+print(f"  │ 3σ margin in propellant mass      : {m_prop_design_total - m_prop_nominal:8.3f} kg               │")
+print(f"  │ 3σ margin percentage              : {(m_prop_design_total/m_prop_nominal - 1)*100:8.1f}%                │")
+print(f"  │                                                              │")
+print(f"  │ Dry mass available (nominal)      : {m_dry_nominal:8.3f} kg               │")
+print(f"  │ Dry mass available (design prop)  : {m_dry_design_actual:8.3f} kg               │")
+print(f"  │ → This is the mass for bus + payload within 100 kg          │")
+print(f"  └──────────────────────────────────────────────────────────────┘")
 
-print(f"\n  Phase-by-phase mass margin check (dry mass):")
+print(f"\n  Phase-by-phase dry mass margin check:")
+print(f"  (Allowable dry mass = {m_wet_total:.0f} kg - {m_prop_design_total:.3f} kg propellant"
+      f" = {m_dry_design_actual:.3f} kg)")
 print(f"  ┌────────────┬───────────┬────────────────────────────────┐")
-print(f"  │   Phase    │  Required │  Status (m_allow=100kg)        │")
+print(f"  │   Phase    │  Required │  Max predicted dry mass        │")
 print(f"  ├────────────┼───────────┼────────────────────────────────┤")
 
-m_wet = m_dry_nominal + m_prop_design_total
 phases = [
     ("Pre-Phase A", "≥15%", 0.15),
     ("Phase A/SRR", "≥15%", 0.15),
@@ -416,15 +447,13 @@ phases = [
     ("Phase D",     "0%",   0.00),
 ]
 
-m_allowable = 100.0  # Allocatable dry mass [kg]
-# Assume current predicted mass (Pre-Phase A/A estimate)
-m_predicted_current = 80.0  # Example: current estimate
+m_dry_allowable = m_dry_design_actual  # Dry mass budget after propellant allocation
 
 for phase_name, req_str, req_frac in phases:
-    margin_needed = m_allowable * req_frac
-    m_max_predicted = m_allowable - margin_needed
-    print(f"  │ {phase_name:<10s} │  {req_str:<7s}  │  Max predicted: {m_max_predicted:.1f} kg"
-          f"{'':>{'12' if len(phase_name)<10 else '12'}}│")
+    margin_needed = m_dry_allowable * req_frac
+    m_max_predicted = m_dry_allowable - margin_needed
+    print(f"  │ {phase_name:<10s} │  {req_str:<7s}  │  {m_max_predicted:>6.1f} kg"
+          f" (margin {margin_needed:.1f} kg)      │")
 
 print(f"  └────────────┴───────────┴────────────────────────────────┘")
 
@@ -436,23 +465,26 @@ print("[10] SUMMARY & RECOMMENDATIONS")
 print("=" * 72)
 print(f"""
   ┌─────────────────────────────────────────────────────────────────┐
+  │  TOTAL WET MASS CONSTRAINT     : {m_wet_total:>6.1f} kg                      │
+  │                                                                 │
   │  DESIGN ΔV BUDGET                                              │
   │  ─────────────────────────────────────────────────────────────  │
   │  Nominal ΔV total          : {dv_total_nominal:>8.2f} m/s                    │
   │  3σ uncertainty (RSS)      : {sigma_total_3s:>8.2f} m/s                    │
   │  Design ΔV                 : {dv_design:>8.2f} m/s                    │
   │                                                                 │
-  │  PROPELLANT BUDGET                                              │
+  │  MASS BUDGET BREAKDOWN                                          │
   │  ─────────────────────────────────────────────────────────────  │
-  │  Nominal propellant (Xe)   : {m_prop_nominal:>8.3f} kg                    │
-  │  Design propellant         : {m_prop_design_total:>8.3f} kg (incl. 3σ + residuals) │
-  │  Wet mass (nominal dry)    : {m_dry_nominal + m_prop_design_total:>8.3f} kg                    │
+  │  Design propellant (Xe)    : {m_prop_design_total:>8.3f} kg (incl. 3σ + residuals) │
+  │  Dry mass available        : {m_dry_design_actual:>8.3f} kg (for bus + payload)    │
+  │  Propellant fraction       : {m_prop_design_total/m_wet_total*100:>8.1f}%                       │
   │                                                                 │
   │  KEY NOTES                                                      │
   │  ─────────────────────────────────────────────────────────────  │
   │  • Drag is the dominant ΔV driver at 300 km VLEO                │
   │  • Solar activity has a ~10x impact on drag ΔV                  │
   │  • 3σ propellant margin per GSFC-STD-1000H Table 1.06-1        │
+  │  • ~{m_dry_design_actual:.0f} kg available for bus + payload design             │
   │  • Consider solar cycle phase during mission planning           │
   └─────────────────────────────────────────────────────────────────┘
 """)
