@@ -39,7 +39,6 @@ A_max = 1.10 * 0.35     # Max cross-section [m^2] = 0.385 m^2
 A_nom = 0.35 * 0.25     # Nominal cross-section [m^2] = 0.0875 m^2
 
 # HET parameters (BHT-100 class)
-# Isp_nominal = 1390.0     # Nominal specific impulse [s]
 Isp_nominal = 1000.0     # Nominal specific impulse [s]
 thrust_nominal = 7.0e-3  # Nominal thrust [N] = 7 mN
 power_nominal = 100.0    # Nominal input power [W]
@@ -404,6 +403,38 @@ print(f"  Thruster-on time (nominal)       : {t_on_nominal:.0f} s ({t_on_nominal
 print(f"  Thruster-on time (design)        : {t_on_design:.0f} s ({t_on_design/3600:.1f} hrs)")
 print(f"  BHT-100 typical lifetime         : ~10,000 hrs")
 print(f"  Lifetime margin                  : {10000/(t_on_design/3600)*100 - 100:.0f}%")
+
+# Duty cycle
+duty_cycle_nominal = t_on_nominal / mission_life_sec * 100  # %
+duty_cycle_design = t_on_design / mission_life_sec * 100    # %
+
+# Average power consumption (thruster only)
+power_avg_nominal = power_nominal * (duty_cycle_nominal / 100)  # W
+power_avg_design = power_nominal * (duty_cycle_design / 100)    # W
+
+# Per-orbit breakdown
+n_orbits_total = mission_life_sec / T_orbit
+t_on_per_orbit_nom = t_on_nominal / n_orbits_total
+t_on_per_orbit_des = t_on_design / n_orbits_total
+duty_per_orbit_nom = t_on_per_orbit_nom / T_orbit * 100
+duty_per_orbit_des = t_on_per_orbit_des / T_orbit * 100
+
+print(f"\n  --- Thrust Duty Cycle ---")
+print(f"  Mission duration                 : {mission_life_sec:.0f} s ({mission_life_sec/3600:.0f} hrs)")
+print(f"  Total orbits in mission          : {n_orbits_total:.0f} orbits")
+print(f"")
+print(f"  Overall mission duty cycle:")
+print(f"    Nominal                        : {duty_cycle_nominal:.2f}%")
+print(f"    Design                         : {duty_cycle_design:.2f}%")
+print(f"")
+print(f"  Per-orbit breakdown:")
+print(f"    Orbit period                   : {T_orbit:.1f} s ({T_orbit/60:.1f} min)")
+print(f"    Thruster-on per orbit (nominal): {t_on_per_orbit_nom:.1f} s ({duty_per_orbit_nom:.2f}%)")
+print(f"    Thruster-on per orbit (design) : {t_on_per_orbit_des:.1f} s ({duty_per_orbit_des:.2f}%)")
+print(f"\n  --- Power Impact ---")
+print(f"  Thruster input power             : {power_nominal:.0f} W (when firing)")
+print(f"  Average power draw (nominal)     : {power_avg_nominal:.1f} W")
+print(f"  Average power draw (design)      : {power_avg_design:.1f} W")
 
 # Xenon tank sizing (rough)
 rho_xe = 1.6  # kg/L (supercritical xenon density at typical storage)
